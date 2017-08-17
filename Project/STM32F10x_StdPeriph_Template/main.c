@@ -70,6 +70,7 @@ volatile uint8_t state=0;
 char mode='R';
 uint32_t size=25;
 float Frequency = 0;
+float Temperature = 0;
 float cycleaverage[6] = {0};
 int send_flag = 0;
 uint16_t bat_volt = 0;
@@ -122,15 +123,25 @@ uint8_t reply_buf[36] = {
 	0x00,
 	0xff,
   'A'};
+
+uint8_t adc_channel_map[6] = {
+	ADC_Channel_10,
+	ADC_Channel_11,
+	ADC_Channel_12,
+	ADC_Channel_13,
+	ADC_Channel_0,
+	ADC_Channel_1};
 	
 	
 uint8_t receive_buf[15] = {0};
 int receive_count = 0;
 /* Private functions ---------------------------------------------------------*/
-void write_to_data_buf(int num,uint16_t Freq)
+void write_to_data_buf(int num,uint16_t Freq, uint16_t Temp)
 {
 	data_buf[3 + num * 5 + 1] = (uint8_t)((Freq&0xff00)>>8);
 	data_buf[3 + num * 5 + 2] = (uint8_t)(Freq&0x00ff);
+	data_buf[3 + num * 5 + 3] = (uint8_t)((Temp&0xff00)>>8);
+	data_buf[3 + num * 5 + 4] = (uint8_t)(Temp&0x00ff);
 }
 	
 void get_battery_voltage()
@@ -146,6 +157,21 @@ void get_battery_voltage()
 	ADC_Cmd(ADC1, DISABLE);
 }
 
+float get_temperature(int ch)
+{
+	int i;
+	float result = 0;
+	ADC_RegularChannelConfig(ADC1, adc_channel_map[ch], 1, ADC_SampleTime_239Cycles5);			    
+  for(i=0;i<8;i++)
+	{
+		ADC_SoftwareStartConvCmd(ADC1, ENABLE);
+		while(!ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC ));
+		result+=ADC_GetConversionValue(ADC1);
+	}
+	result=result/8;
+	return result;
+}
+
 void capture()
 {
 		int i;
@@ -159,10 +185,11 @@ void capture()
 			TIM_Cmd(STRING_TIM, ENABLE); 
 			DMA_Cmd(STRING_DMA_CHANNEL,ENABLE);				
 			while(state == 1) ; 
-			Frequency=240000000/cycleaverage[i] + 0.5;	//10倍真正频率	
-			write_to_data_buf(i,(uint16_t)(Frequency));	
+			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10倍真正频率
+			Temperature = get_temperature(i);
+			write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
 		}
-		get_battery_voltage();
+		//get_battery_voltage();
 	  GPIO_ResetBits(GPIOA, STRING_PIN_SWITCH);
 }
 /**
@@ -296,6 +323,7 @@ void RCC_Configuration(void)
   /* TIM3 clock enable */
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+	RCC_ADCCLKConfig(RCC_PCLK2_Div6);   
 
   /* GPIOA and GPIOB clock enable */
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
@@ -328,6 +356,10 @@ void dma_NVIC(void)
 	
 	NVIC_InitStructure.NVIC_IRQChannel = DMA1_Channel6_IRQn;
   NVIC_Init(&NVIC_InitStructure);
+	
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
+	NVIC_InitStructure.NVIC_IRQChannel = TIM6_DAC_IRQn;
+	NVIC_Init(&NVIC_InitStructure);
 }
 
  void init_dma(void)
@@ -402,6 +434,7 @@ void dma_NVIC(void)
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2,ENABLE);
 	  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3,ENABLE);
 	  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4,ENABLE);
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM6,ENABLE);
   
 	  timInitStruct.TIM_ClockDivision = TIM_CKD_DIV1;                
     timInitStruct.TIM_Prescaler = 0;                    
@@ -420,6 +453,17 @@ void dma_NVIC(void)
 		TIM_DeInit(TIM4);
     TIM_InternalClockConfig(TIM4);                                
 	  TIM_TimeBaseInit(TIM4, &timInitStruct);
+		
+		timInitStruct.TIM_ClockDivision = TIM_CKD_DIV1;                
+    timInitStruct.TIM_Prescaler = 23999;                    
+    timInitStruct.TIM_CounterMode = TIM_CounterMode_Up;     
+    timInitStruct.TIM_RepetitionCounter = 0;  
+    timInitStruct.TIM_Period = 999; 
+		
+		TIM_DeInit(TIM6);
+    TIM_InternalClockConfig(TIM6);                                
+	  TIM_TimeBaseInit(TIM6, &timInitStruct);
+		TIM_ITConfig(TIM6,TIM_IT_Update,ENABLE);
     
     tim_icinit.TIM_ICFilter = 0x0;
     tim_icinit.TIM_ICPolarity = TIM_ICPolarity_Falling;
@@ -480,6 +524,7 @@ void dma_NVIC(void)
 		TIM_Cmd(TIM2, DISABLE); 
 		TIM_Cmd(TIM3, DISABLE); 
 		TIM_Cmd(TIM4, DISABLE); 
+		TIM_Cmd(TIM6, ENABLE);
 }
 /**
   * @brief  Configure the GPIOD Pins.
@@ -535,10 +580,17 @@ void GPIO_Configuration(void)
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
   GPIO_Init(SPIx_GPIO, &GPIO_InitStructure);
 	
-	/* Configure PC.04 (ADC Channel14) as analog input -------------------------*/
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
+	/* Configure PC0-3 as analog input -------------------------*/
+  GPIO_InitStructure.GPIO_Pin = STRING_PIN_TEMPOP1 | STRING_PIN_TEMPOP2 | STRING_PIN_TEMPOP3 | STRING_PIN_TEMPOP4;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
   GPIO_Init(GPIOC, &GPIO_InitStructure);
+	
+	/* Configure PA0-1 as analog input -------------------------*/
+  GPIO_InitStructure.GPIO_Pin = STRING_PIN_TEMPOP5 | STRING_PIN_TEMPOP6;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
 }
 
 void SPI_Configuration(void)
@@ -559,7 +611,8 @@ void SPI_Configuration(void)
 void ADC_Configuration(void)
 {
 	ADC_InitTypeDef ADC_InitStructure;
-
+	
+	ADC_DeInit(ADC1);
   ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
   ADC_InitStructure.ADC_ScanConvMode = DISABLE;
   ADC_InitStructure.ADC_ContinuousConvMode = DISABLE;
@@ -567,17 +620,13 @@ void ADC_Configuration(void)
   ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
   ADC_InitStructure.ADC_NbrOfChannel = 1;
   ADC_Init(ADC1, &ADC_InitStructure);
-
-  /* ADC1 regular channel14 configuration */ 
-  ADC_RegularChannelConfig(ADC1, ADC_Channel_14, 1, ADC_SampleTime_55Cycles5);
 	
-	  /* Enable ADC1 reset calibration register */   
-  ADC_ResetCalibration(ADC1);
-
-  /* Start ADC1 calibration */
-  ADC_StartCalibration(ADC1);
-  /* Check the end of ADC1 calibration */
-  while(ADC_GetCalibrationStatus(ADC1));
+	ADC_Cmd(ADC1, ENABLE);
+	ADC_ResetCalibration(ADC1);
+	while(ADC_GetResetCalibrationStatus(ADC1));	
+	ADC_StartCalibration(ADC1);
+	while(ADC_GetCalibrationStatus(ADC1));
+	ADC_SoftwareStartConvCmd(ADC1, ENABLE);	
 }
 
 void USART_Configuration(void)

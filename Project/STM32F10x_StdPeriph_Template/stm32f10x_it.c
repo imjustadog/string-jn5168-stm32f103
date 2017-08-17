@@ -164,6 +164,25 @@ void SysTick_Handler(void)
 /*  available peripheral interrupt handler's name please refer to the startup */
 /*  file (startup_stm32f10x_xx.s).                                            */
 /******************************************************************************/
+int led = 0;
+void TIM6_DAC_IRQHandler(void)
+{
+	if(TIM_GetITStatus(TIM6, TIM_IT_Update) != RESET) //?? TIM3 ????????  
+	{  
+		TIM_ClearITPendingBit(TIM6, TIM_IT_Update ); //?? TIM3 ??????  
+		if(led == 0)
+		{
+			GPIO_ResetBits(GPIOB, BAT_PIN_1);
+      led = 1;			
+		}
+		else
+		{
+			GPIO_SetBits(GPIOB, BAT_PIN_1);
+      led = 0;			
+		}
+	}
+}	
+	
 void DMA1_Channel1_IRQHandler(void)
 { 
 	unsigned char i=0,j=0;
@@ -455,7 +474,7 @@ void USART3_IRQHandler(void)
 						start_judge = 0;
 						break;
 					}
-					defualt:break;
+					default:break;
 				}
 	    }
   }
