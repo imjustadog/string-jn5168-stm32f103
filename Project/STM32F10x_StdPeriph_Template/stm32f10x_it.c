@@ -38,7 +38,7 @@
 /* Private variables ---------------------------------------------------------*/
 extern void DELAY(__IO uint32_t nCount);
 extern float cycleaverage[6];
-extern void uart_senddata(uint8_t *str);
+extern void uart_zigbee_senddata(uint8_t *str);
 uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
 extern uint16_t Capture[6][30];
@@ -52,6 +52,8 @@ int start_judge = 0;
 int reset_time = 0;
 extern int send_flag;
 extern UART_SendTypeDef UART_SendEnum;
+extern int interval;
+extern int send_485;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -363,18 +365,33 @@ void DMA1_Channel6_IRQHandler(void)
   }
 }
 
+uint8_t data;
+void UART4_IRQHandler(void)
+{
+	if(USART_GetITStatus(UART4, USART_IT_RXNE) != RESET)
+  {
+		  USART_ClearITPendingBit(UART4,USART_IT_RXNE); 
+		  data = USART_ReceiveData(UART4);
+			if(data == '4')
+	    {
+				send_485 = 1;
+				return;
+	    }
+	}
+}
+
 uint8_t dat;
 void USART3_IRQHandler(void)
 {
-
 	if(USART_GetITStatus(USART3, USART_IT_RXNE) != RESET)
   {
+		  USART_ClearITPendingBit(USART3,USART_IT_RXNE); 
     /* Read one byte from the receive data register */
 		  dat = USART_ReceiveData(USART3);
 
 			if((UART_SendEnum == SEND_NONE) && (dat == 'K'))
 	    {
-				UART_SendEnum = SEND_DATA;
+				UART_SendEnum = SEND_START;
 				return;
 	    }
 		
@@ -395,7 +412,15 @@ void USART3_IRQHandler(void)
 					  if(dat == 'E')
 						{
 							//TODO:在此添加命令解析代码
-							 if(receive_buf[2] == 0xff)
+							 if(receive_buf[4] != 0xff)
+							 {
+								 //TODO:设置采样间隔 
+								 interval = receive_buf[4] * 0.5;
+								 reply_buf[32] = 0;
+								 reply_buf[33] = 0;
+								 reply_buf[34] = 0x55;
+							 }
+							 else if(receive_buf[2] == 0xff)
 							 {
 								 mode = 'R';
 								 reply_buf[32] = 0xff;
@@ -410,14 +435,7 @@ void USART3_IRQHandler(void)
 								 reply_buf[33] = 0;
 								 reply_buf[34] = 0;
 							 }
-							 else 
-							 {
-								 //TODO:设置采样间隔 
-								 reply_buf[32] = 0;
-								 reply_buf[33] = 0xff;
-								 reply_buf[34] = 0;
-							 }
-							 uart_senddata(reply_buf);
+							 uart_zigbee_senddata(reply_buf);
 				       if(mode == 'R')
 								 UART_SendEnum = SEND_DATA;
 							 else if(mode == 'Z')

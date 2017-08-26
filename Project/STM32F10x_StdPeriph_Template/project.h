@@ -35,6 +35,8 @@
 #define STRING_PIN_TEMPOP2     GPIO_Pin_1
 #define STRING_PIN_TEMPOP3     GPIO_Pin_2
 #define STRING_PIN_TEMPOP4     GPIO_Pin_3
+/*******GPIOD*******/
+#define RS485_DE               GPIO_Pin_2              
 
 /*******SPI*******/
 #define SPIx                   SPI2

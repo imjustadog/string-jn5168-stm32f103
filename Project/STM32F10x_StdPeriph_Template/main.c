@@ -24,6 +24,7 @@
 #include "stm32f10x_it.h"
 #include "project.h"
 #include <stdio.h>
+#include <math.h>
 
 #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
 /** @addtogroup STM32F10x_StdPeriph_Examples
@@ -74,10 +75,17 @@ float Temperature = 0;
 float cycleaverage[6] = {0};
 int send_flag = 0;
 uint16_t bat_volt = 0;
-unsigned int board_num =0xAAAA;
+int interval = 2;
+unsigned int board_num =0xAAAC;
+int send_485 = 0;
+	
+float	A = 0.0014051f;
+float B = 0.0002369f;
+float C = 0.0000001019f;
 
 /************zigbee通讯部分******************************/
-void uart_senddata(uint8_t *str);
+void uart_zigbee_senddata(uint8_t *str);
+void uart_485_senddata(uint8_t *str);
 UART_SendTypeDef UART_SendEnum  = SEND_NONE;
 
 uint8_t data_buf[36] = {
@@ -175,6 +183,7 @@ float get_temperature(int ch)
 void capture()
 {
 		int i;
+		float temp_log;
 	  GPIO_SetBits(GPIOA, STRING_PIN_SWITCH); 
 		DELAY(1000);
 		for(i = 0;i < 6;i ++)
@@ -187,6 +196,8 @@ void capture()
 			while(state == 1) ; 
 			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10倍真正频率
 			Temperature = get_temperature(i);
+			//temp_log = log(Temperature);
+			//Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f; 
 			write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
 		}
 		//get_battery_voltage();
@@ -230,13 +241,20 @@ int main(void)
 
   while (1)
 	{
+		if(send_485 == 1)
+		{
+			  capture();
+				GPIO_SetBits(GPIOD, RS485_DE); 
+				uart_485_senddata(data_buf);
+				GPIO_ResetBits(GPIOD, RS485_DE);
+			  send_485 = 0;
+		}
 		switch(UART_SendEnum)
 		{
 			case SEND_DATA:
 			{
 				capture();
-				if(UART_SendEnum == SEND_DATA)
-					uart_senddata(data_buf);
+				uart_zigbee_senddata(data_buf);				
 				break;
 			}
 			case SEND_NONE:
@@ -245,8 +263,7 @@ int main(void)
 			}
 			case SEND_START:
 			{
-				uart_senddata(start_buf);
-				uart_senddata(start_buf);
+				uart_zigbee_senddata(start_buf);
 				UART_SendEnum = SEND_DATA;
 				break;
 			}
@@ -329,6 +346,7 @@ void RCC_Configuration(void)
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 }
 
@@ -565,6 +583,11 @@ void GPIO_Configuration(void)
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOC, &GPIO_InitStructure);
 	
+	GPIO_InitStructure.GPIO_Pin = RS485_DE;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+  GPIO_Init(GPIOD, &GPIO_InitStructure);
+	
 	/* Configure PB12-15 of spi mode */
 	GPIO_InitStructure.GPIO_Pin =  SPIx_PIN_SCK | SPIx_PIN_MOSI;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -644,26 +667,33 @@ void USART_Configuration(void)
   //RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE); //前面已经开过了
 
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
+	
 
   /* Configure USART Tx as alternate function push-pull */
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_Init(GPIOC, &GPIO_InitStructure);
 
 
   /* Configure USART Rx as input floating */
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
   GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_Init(GPIOC, &GPIO_InitStructure);
 
   /* USART configuration */
   USART_Init(USART3, &USART_InitStructure);
+	USART_Init(UART4, &USART_InitStructure);
     
   /* Enable USART */
   USART_Cmd(USART3, ENABLE);
+	USART_Cmd(UART4, ENABLE);
 	
 	USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+	USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
 }
 
 void NVIC_Configuration(void)
@@ -675,6 +705,11 @@ void NVIC_Configuration(void)
   
   /* Enable the USART3 Interrupt */
   NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+	
+	NVIC_InitStructure.NVIC_IRQChannel = UART4_IRQn;
   NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&NVIC_InitStructure);
@@ -746,7 +781,7 @@ void DELAY(__IO uint32_t nCount)
    } 	
 }
 
-void uart_senddata(uint8_t *str)
+void uart_zigbee_senddata(uint8_t *str)
 {
 	int i;
 	for(i = 0;i < 36;i ++)
@@ -755,6 +790,19 @@ void uart_senddata(uint8_t *str)
 
 		/* Loop until the end of transmission */
 		while (USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET)
+		{}
+	}
+}
+
+void uart_485_senddata(uint8_t *str)
+{
+	int i;
+	for(i = 0;i < 36;i ++)
+	{
+		USART_SendData(UART4, *(str + i));
+
+		/* Loop until the end of transmission */
+		while (USART_GetFlagStatus(UART4, USART_FLAG_TC) == RESET)
 		{}
 	}
 }
