@@ -76,7 +76,7 @@ float cycleaverage[6] = {0};
 int send_flag = 0;
 uint16_t bat_volt = 0;
 int interval = 2;
-unsigned int board_num =0xAAAC;
+unsigned int board_num =0xAAAA;
 int send_485 = 0;
 	
 float	A = 0.0014051f;
@@ -85,8 +85,10 @@ float C = 0.0000001019f;
 
 /************zigbee通讯部分******************************/
 void uart_zigbee_senddata(uint8_t *str);
-void uart_485_senddata(uint8_t *str);
+void uart_485_senddata(uint8_t *str, uint8_t num);
 UART_SendTypeDef UART_SendEnum  = SEND_NONE;
+
+uint8_t volt_buf[4] = {'S', 0, 0, 'E'};
 
 uint8_t data_buf[36] = {
 	'S',
@@ -140,9 +142,6 @@ uint8_t adc_channel_map[6] = {
 	ADC_Channel_0,
 	ADC_Channel_1};
 	
-	
-uint8_t receive_buf[15] = {0};
-int receive_count = 0;
 /* Private functions ---------------------------------------------------------*/
 void write_to_data_buf(int num,uint16_t Freq, uint16_t Temp)
 {
@@ -184,6 +183,11 @@ void capture()
 {
 		int i;
 		float temp_log;
+		
+	  GPIO_SetBits(GPIOD, RS485_DE); 
+		uart_485_senddata(volt_buf, 4);
+		GPIO_ResetBits(GPIOD, RS485_DE);
+	  
 	  GPIO_SetBits(GPIOA, STRING_PIN_SWITCH); 
 		DELAY(1000);
 		for(i = 0;i < 6;i ++)
@@ -192,7 +196,7 @@ void capture()
 			MEASUREMENT();
 			state = 1;
 			TIM_Cmd(STRING_TIM, ENABLE); 
-			DMA_Cmd(STRING_DMA_CHANNEL,ENABLE);				
+			DMA_Cmd(STRING_DMA_CHANNEL,ENABLE);			
 			while(state == 1) ; 
 			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10倍真正频率
 			Temperature = get_temperature(i);
@@ -200,7 +204,6 @@ void capture()
 			//Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f; 
 			write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
 		}
-		//get_battery_voltage();
 	  GPIO_ResetBits(GPIOA, STRING_PIN_SWITCH);
 }
 /**
@@ -234,6 +237,9 @@ int main(void)
 	
 	data_buf[1] = (board_num >>8)& 0x00FF;
 	data_buf[2] = board_num & 0x00ff;
+	volt_buf[1] = (board_num >>8)& 0x00FF;
+	volt_buf[2] = board_num & 0x00ff;
+	
 	start_buf[1] = data_buf[1];
 	start_buf[2] = data_buf[2];
 	reply_buf[1] = data_buf[1];
@@ -245,7 +251,7 @@ int main(void)
 		{
 			  capture();
 				GPIO_SetBits(GPIOD, RS485_DE); 
-				uart_485_senddata(data_buf);
+				uart_485_senddata(data_buf, 36);
 				GPIO_ResetBits(GPIOD, RS485_DE);
 			  send_485 = 0;
 		}
@@ -794,10 +800,10 @@ void uart_zigbee_senddata(uint8_t *str)
 	}
 }
 
-void uart_485_senddata(uint8_t *str)
+void uart_485_senddata(uint8_t *str, uint8_t num)
 {
 	int i;
-	for(i = 0;i < 36;i ++)
+	for(i = 0;i < num;i ++)
 	{
 		USART_SendData(UART4, *(str + i));
 

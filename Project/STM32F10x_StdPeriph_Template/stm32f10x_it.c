@@ -45,15 +45,14 @@ extern uint16_t Capture[6][30];
 extern uint32_t size;
 extern volatile uint8_t state;
 extern char mode;
-extern uint8_t receive_buf[15];
+extern uint8_t data_buf[36];
 extern uint8_t reply_buf[35];
-extern int receive_count;
-int start_judge = 0;
 int reset_time = 0;
 extern int send_flag;
 extern UART_SendTypeDef UART_SendEnum;
 extern int interval;
 extern int send_485;
+extern unsigned int board_num;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -172,16 +171,6 @@ void TIM6_DAC_IRQHandler(void)
 	if(TIM_GetITStatus(TIM6, TIM_IT_Update) != RESET) //?? TIM3 ????????  
 	{  
 		TIM_ClearITPendingBit(TIM6, TIM_IT_Update ); //?? TIM3 ??????  
-		if(led == 0)
-		{
-			GPIO_ResetBits(GPIOB, BAT_PIN_1);
-      led = 1;			
-		}
-		else
-		{
-			GPIO_SetBits(GPIOB, BAT_PIN_1);
-      led = 0;			
-		}
 	}
 }	
 	
@@ -366,21 +355,52 @@ void DMA1_Channel6_IRQHandler(void)
 }
 
 uint8_t data;
+uint8_t rxbuf[15] = {0};
+uint8_t rxcount = 0;
 void UART4_IRQHandler(void)
 {
 	if(USART_GetITStatus(UART4, USART_IT_RXNE) != RESET)
   {
 		  USART_ClearITPendingBit(UART4,USART_IT_RXNE); 
 		  data = USART_ReceiveData(UART4);
-			if(data == '4')
+		
+		  if((rxcount == 0) && (data == 'S'))
 	    {
-				send_485 = 1;
-				return;
+				rxbuf[0] = data;
+				rxcount = 1;
 	    }
+	    else if(data == 'E')
+			{
+				rxbuf[rxcount] = data;
+	      rxcount ++;
+				if((rxcount == 6) && (rxbuf[1] == (board_num >> 8)) && (rxbuf[2] == (board_num & 0x00ff)))
+				{
+					data_buf[33] = rxbuf[3];
+					data_buf[34] = rxbuf[4];
+				}
+				else if(rxcount == 3)
+				{
+					send_485 = 1;
+				}
+				rxcount = 0;
+			}
+			else if(data == 'E')
+			{
+			}
+			else if(rxcount > 0)
+			{
+				rxbuf[rxcount] = data;
+				rxcount ++;
+				if(rxcount > 14) rxcount = 14;
+			}
+			else ;
 	}
 }
 
 uint8_t dat;
+uint8_t start_judge = 0;
+uint8_t receive_buf[15] = {0};
+uint8_t receive_count = 0;
 void USART3_IRQHandler(void)
 {
 	if(USART_GetITStatus(USART3, USART_IT_RXNE) != RESET)
