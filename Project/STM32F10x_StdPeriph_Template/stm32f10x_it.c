@@ -37,22 +37,29 @@
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 extern void DELAY(__IO uint32_t nCount);
-extern float cycleaverage[6];
 extern void uart_zigbee_senddata(uint8_t *str);
-uint32_t cycle[30] = {0};
-__IO uint32_t allcycle = 0;
+extern void uart_485_senddata(uint8_t *str, uint8_t num);
+
+extern float cycleaverage[6];
 extern uint16_t Capture[6][30];
 extern uint32_t size;
+
 extern volatile uint8_t state;
-extern char mode;
+extern volatile uint8_t sending;
+extern volatile uint8_t capture_flag;
+extern volatile uint8_t send_flag;
+
 extern uint8_t data_buf[36];
 extern uint8_t reply_buf[35];
-int reset_time = 0;
-extern int send_flag;
+
+extern char mode;
+
 extern UART_SendTypeDef UART_SendEnum;
 extern int interval;
-extern int send_485;
 extern unsigned int board_num;
+
+uint32_t cycle[30] = {0};
+__IO uint32_t allcycle = 0;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -165,12 +172,19 @@ void SysTick_Handler(void)
 /*  available peripheral interrupt handler's name please refer to the startup */
 /*  file (startup_stm32f10x_xx.s).                                            */
 /******************************************************************************/
-int led = 0;
+int count = 0;
 void TIM6_DAC_IRQHandler(void)
 {
 	if(TIM_GetITStatus(TIM6, TIM_IT_Update) != RESET) //?? TIM3 ????????  
 	{  
 		TIM_ClearITPendingBit(TIM6, TIM_IT_Update ); //?? TIM3 ??????  
+		count ++;
+		if(count >= interval)
+		{
+			count = 0;
+			capture_flag = 1;
+			send_flag = 1;
+		}
 	}
 }	
 	
@@ -355,7 +369,7 @@ void DMA1_Channel6_IRQHandler(void)
 }
 
 uint8_t data;
-uint8_t rxbuf[15] = {0};
+uint8_t rxbuf[40] = {0};
 uint8_t rxcount = 0;
 void UART4_IRQHandler(void)
 {
@@ -380,7 +394,11 @@ void UART4_IRQHandler(void)
 				}
 				else if(rxcount == 3)
 				{
-					send_485 = 1;
+					 GPIO_SetBits(GPIOD, RS485_DE); 
+					 sending = 1;
+					 uart_485_senddata(data_buf, 36);
+					 sending = 0;
+					 GPIO_ResetBits(GPIOD, RS485_DE);
 				}
 				rxcount = 0;
 			}
