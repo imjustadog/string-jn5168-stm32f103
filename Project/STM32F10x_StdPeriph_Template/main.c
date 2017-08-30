@@ -73,15 +73,13 @@ float Frequency = 0;
 float Temperature = 0;
 float cycleaverage[6] = {0};
 uint16_t bat_volt = 0;
-int interval = 8;
 unsigned int board_num =0xAAAA;
-
+uint8_t module_per_group = 2;
 	
 float	A = 0.0014051f;
 float B = 0.0002369f;
 float C = 0.0000001019f;
 
-/************zigbee通讯部分******************************/
 void uart_zigbee_senddata(uint8_t *str);
 void uart_485_senddata(uint8_t *str, uint8_t num);
 UART_SendTypeDef UART_SendEnum  = SEND_NONE;
@@ -207,14 +205,14 @@ void capture()
 	  
 	  GPIO_SetBits(GPIOA, STRING_PIN_SWITCH); 
 		DELAY(1000);
-		for(i = 0;i < 3;i ++)
+		for(i = 0;i < 6 / module_per_group;i ++)
 		{
 			MEASUREMENT(i);
-			for(j = 0;j < 2;j ++)
+			for(j = 0;j < module_per_group;j ++)
 			{
 				state = 1;
-				TIM_Cmd(STRING_TIM[i * 2 + j], ENABLE); 
-				DMA_Cmd(STRING_DMA_CHANNEL[i * 2 + j],ENABLE);			
+				TIM_Cmd(STRING_TIM[i * module_per_group + j], ENABLE); 
+				DMA_Cmd(STRING_DMA_CHANNEL[i * module_per_group + j],ENABLE);			
 				while(state == 1) ; 
 			}
 		}
@@ -759,8 +757,10 @@ void MEASUREMENT(int group)
   while(i>=1000)
 	{
 		j = i;
-		GPIO_SetBits(STRING_GPIO[group * 2], STRING_PIN[group * 2]);  
-		GPIO_SetBits(STRING_GPIO[group * 2 + 1], STRING_PIN[group * 2 + 1]); 			
+		for(k = 0;k < module_per_group;k ++)
+		{
+			GPIO_SetBits(STRING_GPIO[group * module_per_group + k], STRING_PIN[group * module_per_group + k]);  
+		} 			
 		while(j)
 		{    
 				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
@@ -768,12 +768,14 @@ void MEASUREMENT(int group)
 		}  
 		
 		j = i;
-		GPIO_ResetBits(STRING_GPIO[group * 2], STRING_PIN[group * 2]);   
-		GPIO_ResetBits(STRING_GPIO[group * 2 + 1], STRING_PIN[group * 2 + 1]); 			
+		for(k = 0;k < module_per_group;k ++)
+		{
+			GPIO_ResetBits(STRING_GPIO[group * module_per_group + k], STRING_PIN[group * module_per_group + k]); 
+		}			
 		while(j)
 		{  
 			 __nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
-				j = j - 1;
+			 j = j - 1;
 		}    
 		
 		i = i - 1; 

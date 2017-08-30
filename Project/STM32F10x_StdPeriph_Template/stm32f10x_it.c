@@ -55,11 +55,11 @@ extern uint8_t reply_buf[35];
 extern char mode;
 
 extern UART_SendTypeDef UART_SendEnum;
-extern int interval;
 extern unsigned int board_num;
 
 uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
+int interval = 8;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
