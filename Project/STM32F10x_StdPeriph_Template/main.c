@@ -335,7 +335,7 @@ int main(void)
 
   while (1)
 	{
-		/*if(capture_flag == 1)
+		if(capture_flag == 1)
 		{
 			 capture();
 			 capture_flag = 0;
@@ -362,12 +362,14 @@ int main(void)
 				break;
 			}
 			default:break;
-		}*/
+		}
+		
 		//TEST();
-		capture();
+		
+		/*capture();
 		GPIO_SetBits(GPIOD, RS485_DE); 
 	  uart_485_senddata(data_buf, 36);
-		GPIO_ResetBits(GPIOD, RS485_DE);
+		GPIO_ResetBits(GPIOD, RS485_DE);*/
 	}
 	
 }

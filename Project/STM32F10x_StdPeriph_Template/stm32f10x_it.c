@@ -59,7 +59,7 @@ extern unsigned int board_num;
 
 uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
-int interval = 20;
+int interval = 5;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
