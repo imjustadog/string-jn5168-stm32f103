@@ -70,11 +70,29 @@ volatile uint8_t capture_flag = 0;
 char mode='R';
 uint32_t size=25;
 float Frequency = 0;
+float Frequency_last[6];
 float Temperature = 0;
 float cycleaverage[6] = {0};
-uint16_t bat_volt = 0;
+
 unsigned int board_num =0xAAAA;
-uint8_t module_per_group = 2;
+uint8_t module_per_group = 1;
+
+int STIMULATE_LOW[6] = {
+	200,
+	200,
+	200,
+	200,
+	200,
+	200};
+
+int STIMULATE_HIGH[6] = {
+	2200,
+	2200,
+	2200,
+	2200,
+	2200,
+	2200};
+
 	
 float	A = 0.0014051f;
 float B = 0.0002369f;
@@ -171,6 +189,39 @@ TIM_TypeDef* STRING_TIM[6] = {
   TIM3};
 	
 /* Private functions ---------------------------------------------------------*/
+/*void TEST()
+{
+	unsigned int i,j,k;
+	
+	i = 2100;	
+  while(i>=1000)
+	{
+		j = 200;
+
+		GPIO_SetBits(STRING_GPIO[0], STRING_PIN[0]);  
+			
+		while(j)
+		{    
+				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
+				j = j - 1;
+		}  
+		
+		j = 200;
+		GPIO_ResetBits(STRING_GPIO[0], STRING_PIN[0]); 			
+		while(j)
+		{  
+			 __nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
+			 j = j - 1;
+		}    
+		
+		i = i - 1; 
+	}
+	
+	DELAY(1500);                                                                                                                                                                                                                       
+}	
+*/	
+	
+	
 void write_to_data_buf(int num,uint16_t Freq, uint16_t Temp)
 {
 	data_buf[3 + num * 5 + 1] = (uint8_t)((Freq&0xff00)>>8);
@@ -205,24 +256,40 @@ void capture()
 	  
 	  GPIO_SetBits(GPIOA, STRING_PIN_SWITCH); 
 		DELAY(1000);
-		for(i = 0;i < 6 / module_per_group;i ++)
+		for(i = 0;i < 6;i ++)
 		{
 			MEASUREMENT(i);
-			for(j = 0;j < module_per_group;j ++)
-			{
-				state = 1;
-				TIM_Cmd(STRING_TIM[i * module_per_group + j], ENABLE); 
-				DMA_Cmd(STRING_DMA_CHANNEL[i * module_per_group + j],ENABLE);			
-				while(state == 1) ; 
-			}
+			state = 1;
+			TIM_Cmd(STRING_TIM[i], ENABLE); 
+			DMA_Cmd(STRING_DMA_CHANNEL[i],ENABLE);			
+			while(state == 1) ; 
 		}
 		while(sending != 0) ;
 		for(i = 0;i < 6; i ++)
 		{
 			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10±¶ÕæÕýÆµÂÊ
 			Temperature = get_temperature(i);
+			
+			if(((Frequency_last[i] - Frequency) >= 100) || ((Frequency - Frequency_last[i]) >= 100))
+			{
+				STIMULATE_HIGH[i] = 2200;
+				STIMULATE_LOW[i] = 200;
+			}
+			else
+			{
+				STIMULATE_HIGH[i] = 240000000.0f / (Frequency - 0.5f - 1000.0f) / 26.0f;
+				STIMULATE_LOW[i] = 240000000.0f / (Frequency - 0.5f + 1000.0f) / 26.0f;
+				if(STIMULATE_LOW[i] < 0)
+				{
+					STIMULATE_LOW[i] = 100;
+					STIMULATE_HIGH[i] = 400;
+				}
+			}
+			Frequency_last[i] = Frequency;
+			
 			//temp_log = log(Temperature);
 			//Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f; 
+			
 			write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
 		}
 	  GPIO_ResetBits(GPIOA, STRING_PIN_SWITCH);
@@ -268,7 +335,7 @@ int main(void)
 
   while (1)
 	{
-		if(capture_flag == 1)
+		/*if(capture_flag == 1)
 		{
 			 capture();
 			 capture_flag = 0;
@@ -295,8 +362,12 @@ int main(void)
 				break;
 			}
 			default:break;
-		}
-	//printf("S1234567890123456789012345678901234");
+		}*/
+		//TEST();
+		capture();
+		GPIO_SetBits(GPIOD, RS485_DE); 
+	  uart_485_senddata(data_buf, 36);
+		GPIO_ResetBits(GPIOD, RS485_DE);
 	}
 	
 }
@@ -753,14 +824,11 @@ void MEASUREMENT(int group)
 {
 	unsigned int i,j,k;
 	
-	i = 2100;	
-  while(i>=1000)
+	i = STIMULATE_HIGH[group];	
+  while(i>=STIMULATE_LOW[group])
 	{
 		j = i;
-		for(k = 0;k < module_per_group;k ++)
-		{
-			GPIO_SetBits(STRING_GPIO[group * module_per_group + k], STRING_PIN[group * module_per_group + k]);  
-		} 			
+		GPIO_SetBits(STRING_GPIO[group], STRING_PIN[group]); 		
 		while(j)
 		{    
 				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
@@ -768,10 +836,7 @@ void MEASUREMENT(int group)
 		}  
 		
 		j = i;
-		for(k = 0;k < module_per_group;k ++)
-		{
-			GPIO_ResetBits(STRING_GPIO[group * module_per_group + k], STRING_PIN[group * module_per_group + k]); 
-		}			
+		GPIO_ResetBits(STRING_GPIO[group], STRING_PIN[group]); 	
 		while(j)
 		{  
 			 __nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
