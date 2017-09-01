@@ -406,13 +406,19 @@ void UART4_IRQHandler(void)
 					data_buf[33] = rxbuf[3];
 					data_buf[34] = rxbuf[4];
 				}
-				else if(rxcount == 3)
+				else if(rxcount == 15)
 				{
-					 GPIO_SetBits(GPIOD, RS485_DE); 
-					 sending = 1;
-					 uart_485_senddata(data_buf, 36);
-					 sending = 0;
-					 GPIO_ResetBits(GPIOD, RS485_DE);
+					 if((rxbuf[1] == (board_num >> 8)) && (rxbuf[2] == (board_num & 0x00ff)))
+					 {
+							 if(rxbuf[3] == 0xff)
+							 {
+									GPIO_SetBits(GPIOD, RS485_DE); 
+									sending = 1;
+									uart_485_senddata(data_buf, 36);
+									sending = 0;
+									GPIO_ResetBits(GPIOD, RS485_DE);
+							 }
+					 }
 				}
 				rxcount = 0;
 			}
