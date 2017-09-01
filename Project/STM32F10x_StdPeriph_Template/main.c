@@ -71,6 +71,9 @@ char mode='R';
 uint32_t size=25;
 float Frequency = 0;
 float Frequency_last[6];
+uint8_t online_count[6] = {0,0,0,0,0,0};
+uint8_t limit_count = 5;
+
 float Temperature = 0;
 float cycleaverage[6] = {0};
 
@@ -247,17 +250,22 @@ float get_temperature(int ch)
 
 void capture()
 {
-		int i,j;
+		int i;
 		float temp_log;
 		
 	  GPIO_SetBits(GPIOD, RS485_DE); 
 		uart_485_senddata(volt_buf, 4);
-		GPIO_ResetBits(GPIOD, RS485_DE);
+	  GPIO_ResetBits(GPIOD, RS485_DE);
 	  
 	  GPIO_SetBits(GPIOA, STRING_PIN_SWITCH); 
 		DELAY(1000);
 		for(i = 0;i < 6;i ++)
 		{
+			if(online_count[i] >= limit_count)
+			{
+				continue;
+			}
+			
 			MEASUREMENT(i);
 			state = 1;
 			TIM_Cmd(STRING_TIM[i], ENABLE); 
@@ -267,16 +275,24 @@ void capture()
 		while(sending != 0) ;
 		for(i = 0;i < 6; i ++)
 		{
+			if(online_count[i] >= limit_count)
+			{
+				write_to_data_buf(i,0,0);	
+				continue;
+			}
+			
 			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10倍真正频率
 			Temperature = get_temperature(i);
 			
 			if(((Frequency_last[i] - Frequency) >= 100) || ((Frequency - Frequency_last[i]) >= 100))
 			{
+				online_count[i] ++;
 				STIMULATE_HIGH[i] = 2200;
 				STIMULATE_LOW[i] = 200;
 			}
 			else
 			{
+				online_count[i] = 0;
 				STIMULATE_HIGH[i] = 240000000.0f / (Frequency - 0.5f - 1000.0f) / 26.0f;
 				STIMULATE_LOW[i] = 240000000.0f / (Frequency - 0.5f + 1000.0f) / 26.0f;
 				if(STIMULATE_LOW[i] < 0)
@@ -318,6 +334,7 @@ int main(void)
 	USART_Configuration();
 
   GPIO_SetBits(GPIOA, ZIGBEE_PIN_RESET); //开zigbee
+	GPIO_SetBits(GPIOD, RS485_DE); 
 	
 	GPIO_ResetBits(GPIOB, BAT_PIN_1);
 	GPIO_ResetBits(GPIOC, BAT_PIN_2);
@@ -335,33 +352,19 @@ int main(void)
 
   while (1)
 	{
-		if(capture_flag == 1)
+		if(UART_SendEnum == SEND_DATA)
+		{
+			if(send_flag == 1)
+			{
+				uart_zigbee_senddata(data_buf);
+				send_flag = 0;
+			}					
+		}
+		
+	  if(capture_flag == 1)
 		{
 			 capture();
 			 capture_flag = 0;
-		}
-		switch(UART_SendEnum)
-		{
-			case SEND_DATA:
-			{
-				if(send_flag == 1)
-				{
-					uart_zigbee_senddata(data_buf);
-					send_flag = 0;
-				}					
-				break;
-			}
-			case SEND_NONE:
-			{
-				break;
-			}
-			case SEND_START:
-			{
-				uart_zigbee_senddata(start_buf);
-				UART_SendEnum = SEND_DATA;
-				break;
-			}
-			default:break;
 		}
 		
 		//TEST();
@@ -824,7 +827,7 @@ void NVIC_Configuration(void)
 
 void MEASUREMENT(int group)
 {
-	unsigned int i,j,k;
+	unsigned int i,j;
 	
 	i = STIMULATE_HIGH[group];	
   while(i>=STIMULATE_LOW[group])

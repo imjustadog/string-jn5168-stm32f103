@@ -51,6 +51,7 @@ extern volatile uint8_t send_flag;
 
 extern uint8_t data_buf[36];
 extern uint8_t reply_buf[35];
+extern uint8_t start_buf[35];
 
 extern char mode;
 
@@ -60,6 +61,9 @@ extern unsigned int board_num;
 uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
 int interval = 5;
+int count = 0;
+uint8_t reset_flag = 0;
+uint8_t reset_count = 0;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -172,18 +176,28 @@ void SysTick_Handler(void)
 /*  available peripheral interrupt handler's name please refer to the startup */
 /*  file (startup_stm32f10x_xx.s).                                            */
 /******************************************************************************/
-int count = 0;
 void TIM6_DAC_IRQHandler(void)
 {
 	if(TIM_GetITStatus(TIM6, TIM_IT_Update) != RESET) //?? TIM3 ????????  
 	{  
-		TIM_ClearITPendingBit(TIM6, TIM_IT_Update ); //?? TIM3 ??????  
+		TIM_ClearITPendingBit(TIM6, TIM_IT_Update); //?? TIM3 ??????  
 		count ++;
 		if(count >= interval)
 		{
 			count = 0;
 			capture_flag = 1;
 			send_flag = 1;
+		}
+		
+		if(reset_flag == 1)
+		{
+			reset_count ++;
+			if(reset_count >= 5)
+			{
+				reset_flag = 0;
+				reset_count = 0;
+				GPIO_SetBits(GPIOA, ZIGBEE_PIN_RESET);
+			}
 		}
 	}
 }	
@@ -429,7 +443,8 @@ void USART3_IRQHandler(void)
 
 			if((UART_SendEnum == SEND_NONE) && (dat == 'K'))
 	    {
-				UART_SendEnum = SEND_START;
+				uart_zigbee_senddata(start_buf);
+				UART_SendEnum = SEND_DATA;
 				return;
 	    }
 		
@@ -524,8 +539,8 @@ void USART3_IRQHandler(void)
 							//TODO:在此添加重启代码
 							UART_SendEnum = SEND_NONE;
 							GPIO_ResetBits(GPIOA, ZIGBEE_PIN_RESET); 
-							DELAY(50000);
-							GPIO_SetBits(GPIOA, ZIGBEE_PIN_RESET);
+							reset_flag = 1;
+							reset_count = 0;
 						}
 						start_judge = 0;
 						break;
