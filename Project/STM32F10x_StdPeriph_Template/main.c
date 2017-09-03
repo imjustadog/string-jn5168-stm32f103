@@ -303,8 +303,8 @@ void capture()
 			}
 			Frequency_last[i] = Frequency;
 			
-			//temp_log = log(Temperature);
-			//Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f; 
+			temp_log = log(Temperature * 4.5185f);
+			Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f; 
 			
 			write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
 		}
@@ -323,6 +323,7 @@ int main(void)
        To reconfigure the default setting of SystemInit() function, refer to
        system_stm32f10x.c file
      */     
+	
   RCC_Configuration();
   NVIC_Configuration();
   GPIO_Configuration();
@@ -369,8 +370,9 @@ int main(void)
 		
 		//TEST();
 		
-		/*capture();
-		GPIO_SetBits(GPIOD, RS485_DE); 
+		//capture();
+		
+		/*GPIO_SetBits(GPIOD, RS485_DE); 
 	  uart_485_senddata(data_buf, 36);
 		GPIO_ResetBits(GPIOD, RS485_DE);*/
 	}
