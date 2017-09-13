@@ -6,11 +6,9 @@
 /*******GPIOA*******/
 #define ZIGBEE_PIN_RESET       GPIO_Pin_5
 #define STRING_PIN_SWITCH      GPIO_Pin_4
-#define STRING_PIN_CEC         GPIO_Pin_8
-#define STRING_PIN_CED         GPIO_Pin_9
-#define STRING_PIN_CEE         GPIO_Pin_10
+
+#define STRING_PIN_CEE         GPIO_Pin_8
 #define STRING_PIN_CEF         GPIO_Pin_11
-#define BAT_PIN_3              GPIO_Pin_15
 
 #define STRING_PIN_PHZ1        GPIO_Pin_2
 #define STRING_PIN_PHZ2        GPIO_Pin_3
@@ -20,21 +18,31 @@
 #define STRING_PIN_TEMPOP6     GPIO_Pin_1
 
 /*******GPIOB*******/
-#define BAT_PIN_1              GPIO_Pin_4
-
 #define STRING_PIN_PHZ3        GPIO_Pin_0
 #define STRING_PIN_PHZ4        GPIO_Pin_1
 #define STRING_PIN_PHZ5        GPIO_Pin_8
 
+#define ID_PIN_ADR1            GPIO_Pin_4
+#define ID_PIN_ADR2            GPIO_Pin_5
+#define ID_PIN_ADR3            GPIO_Pin_7
+#define ID_PIN_ADR4            GPIO_Pin_6
+#define ID_PIN_ADR5            GPIO_Pin_9
+
 /*******GPIOC*******/
-#define STRING_PIN_CEA         GPIO_Pin_8
-#define STRING_PIN_CEB         GPIO_Pin_9
-#define BAT_PIN_2              GPIO_Pin_12
+#define STRING_PIN_CEA         GPIO_Pin_6
+#define STRING_PIN_CEB         GPIO_Pin_7
+#define STRING_PIN_CEC         GPIO_Pin_8
+#define STRING_PIN_CED         GPIO_Pin_9
 
 #define STRING_PIN_TEMPOP1     GPIO_Pin_0
 #define STRING_PIN_TEMPOP2     GPIO_Pin_1
 #define STRING_PIN_TEMPOP3     GPIO_Pin_2
 #define STRING_PIN_TEMPOP4     GPIO_Pin_3
+
+#define ID_PIN_ADR6            GPIO_Pin_13
+#define ID_PIN_ADR7            GPIO_Pin_15
+#define ID_PIN_ADR8            GPIO_Pin_14
+
 /*******GPIOD*******/
 #define RS485_DE               GPIO_Pin_2              
 
