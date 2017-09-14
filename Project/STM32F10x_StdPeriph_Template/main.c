@@ -383,22 +383,25 @@ int main(void)
 	start_buf[2] = data_buf[2];
 	reply_buf[1] = data_buf[1];
 	reply_buf[2] = data_buf[2];
+	
+	capture_flag = 1;
 
   while (1)
 	{
-		if(UART_SendEnum == SEND_DATA)
+		if(capture_flag == 1)
 		{
-			if(send_flag == 1)
+			capture();
+			capture_flag = 0;
+			if(UART_SendEnum == SEND_DATA)
 			{
-				uart_zigbee_senddata(data_buf);
-				send_flag = 0;
-			}					
+				if(send_flag == 1)
+				{
+					uart_zigbee_senddata(data_buf);
+					send_flag = 0;
+				}					
+			}
 		}
-	  if(capture_flag == 1)
-		{
-			 capture();
-			 capture_flag = 0;
-		}
+	  
 		
 		//TEST();
 		
