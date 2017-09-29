@@ -63,6 +63,7 @@ void dma_NVIC(void);
 uint16_t Capture[6][30]={0};
 
 volatile uint8_t state = 0;
+volatile uint8_t timeout_flag = 0;
 volatile uint8_t sending = 0;
 volatile uint8_t send_flag = 0;
 volatile uint8_t capture_flag = 0;
@@ -307,10 +308,19 @@ void capture()
 			}
 			
 			MEASUREMENT(i);
+			
 			state = 1;
+			timeout_flag = 1;
+			
 			TIM_Cmd(STRING_TIM[i], ENABLE); 
 			DMA_Cmd(STRING_DMA_CHANNEL[i],ENABLE);			
-			while(state == 1) ; 
+			/*while((state != 0) && (j != 0))
+			{    
+				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
+				j = j - 1;
+			} */ 
+			while((state != 0) && (timeout_flag < 3)) ;
+			timeout_flag = 0;
 		}
 		while(sending != 0) ;
 		for(i = 0;i < 6; i ++)
@@ -335,10 +345,10 @@ void capture()
 				online_count[i] = 0;
 				STIMULATE_HIGH[i] = 240000000.0f / (Frequency - 0.5f - 1000.0f) / 26.0f;
 				STIMULATE_LOW[i] = 240000000.0f / (Frequency - 0.5f + 1000.0f) / 26.0f;
-				if(STIMULATE_LOW[i] < 0)
+				if(STIMULATE_LOW[i] < 0 || STIMULATE_HIGH[i] < 0 || STIMULATE_HIGH[i] > 3000 || STIMULATE_LOW[i] > 3000)
 				{
-					STIMULATE_LOW[i] = 100;
-					STIMULATE_HIGH[i] = 400;
+					STIMULATE_LOW[i] = 200;
+					STIMULATE_HIGH[i] = 2200;
 				}
 			}
 			Frequency_last[i] = Frequency;
@@ -913,7 +923,7 @@ void MEASUREMENT(int group)
 		i = i - 1; 
 	}
 	
-	DELAY(1500);                                                                                                                                                                                                                       
+	DELAY(4000);                                                                                                                                                                                                                       
 }
 
 void DELAY(__IO uint32_t nCount)

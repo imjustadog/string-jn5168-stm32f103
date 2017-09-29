@@ -45,6 +45,7 @@ extern uint16_t Capture[6][30];
 extern uint32_t size;
 
 extern volatile uint8_t state;
+extern volatile uint8_t timeout_flag;
 extern volatile uint8_t sending;
 extern volatile uint8_t capture_flag;
 extern volatile uint8_t send_flag;
@@ -201,6 +202,12 @@ void TIM6_DAC_IRQHandler(void)
 				GPIO_SetBits(GPIOA, ZIGBEE_PIN_RESET);
 			}
 		}
+		
+		if(timeout_flag != 0)
+		{
+			timeout_flag ++;
+		}
+			
 	}
 }	
 	
