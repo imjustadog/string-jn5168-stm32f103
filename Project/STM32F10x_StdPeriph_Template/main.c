@@ -320,7 +320,15 @@ void capture()
 				j = j - 1;
 			} */ 
 			while((state != 0) && (timeout_flag < 3)) ;
-			timeout_flag = 0;
+
+			if(state == 1) //haven't tested
+			{
+				TIM_Cmd(STRING_TIM[i], DISABLE); 
+				DMA_Cmd(STRING_DMA_CHANNEL[i],DISABLE);
+			}
+			
+			state = 0;
+      timeout_flag = 0;
 		}
 		while(sending != 0) ;
 		for(i = 0;i < 6; i ++)
