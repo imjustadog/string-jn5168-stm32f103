@@ -328,7 +328,7 @@ void capture()
 			}
 			
 			state = 0;
-      timeout_flag = 0;
+			timeout_flag = 0;
 		}
 		while(sending != 0) ;
 		for(i = 0;i < 6; i ++)
@@ -342,7 +342,7 @@ void capture()
 			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10±¶ÕæÕýÆµÂÊ
 			Temperature = get_temperature(i);
 			
-			if(((Frequency_last[i] - Frequency) >= 100) || ((Frequency - Frequency_last[i]) >= 100))
+			if(((Frequency_last[i] - Frequency) >= 1000) || ((Frequency - Frequency_last[i]) >= 1000))
 			{
 				online_count[i] ++;
 				STIMULATE_HIGH[i] = 2200;
@@ -353,9 +353,14 @@ void capture()
 				online_count[i] = 0;
 				STIMULATE_HIGH[i] = 240000000.0f / (Frequency - 0.5f - 1000.0f) / 26.0f;
 				STIMULATE_LOW[i] = 240000000.0f / (Frequency - 0.5f + 1000.0f) / 26.0f;
-				if(STIMULATE_LOW[i] < 0 || STIMULATE_HIGH[i] < 0 || STIMULATE_HIGH[i] > 3000 || STIMULATE_LOW[i] > 3000)
+				if(STIMULATE_LOW[i] < 0 || STIMULATE_HIGH[i] < 0)
 				{
 					STIMULATE_LOW[i] = 200;
+					STIMULATE_HIGH[i] = 400;
+				}
+				else if(STIMULATE_HIGH[i] > 3000 || STIMULATE_LOW[i] > 3000)
+				{
+				  STIMULATE_LOW[i] = 2000;
 					STIMULATE_HIGH[i] = 2200;
 				}
 			}
