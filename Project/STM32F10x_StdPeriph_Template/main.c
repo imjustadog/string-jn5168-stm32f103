@@ -54,7 +54,7 @@ void NVIC_Configuration(void);
 void USART_Configuration(void);
 void SPI_Configuration(void);
 void ADC_Configuration(void);
-void MEASUREMENT(int group);
+void MEASUREMENT(void);
 void DELAY(__IO uint32_t nCount);
 void init_timer(void);
 void init_dma(void);
@@ -300,76 +300,30 @@ void capture()
 	  
 	  GPIO_SetBits(GPIOA, STRING_PIN_SWITCH); 
 		DELAY(1000);
+		MEASUREMENT();
 		for(i = 0;i < 6;i ++)
 		{
-			if(online_count[i] >= limit_count)
-			{
-				continue;
-			}
-			
-			MEASUREMENT(i);
-			
-			state = 1;
-			timeout_flag = 1;
-			
-			TIM_Cmd(STRING_TIM[i], ENABLE); 
-			DMA_Cmd(STRING_DMA_CHANNEL[i],ENABLE);			
-			/*while((state != 0) && (j != 0))
-			{    
-				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
-				j = j - 1;
-			} */ 
-			while((state != 0) && (timeout_flag < 3)) ;
-
-			if(state == 1) //haven't tested
-			{
-				TIM_Cmd(STRING_TIM[i], DISABLE); 
-				DMA_Cmd(STRING_DMA_CHANNEL[i],DISABLE);
-			}
-			
-			state = 0;
-			timeout_flag = 0;
+				state = 1;
+			  timeout_flag = 1;
+				TIM_Cmd(STRING_TIM[i], ENABLE); 
+				DMA_Cmd(STRING_DMA_CHANNEL[i],ENABLE);			
+				while((state != 0) && (timeout_flag < 3)) ;
+				if(state == 1)
+				{
+					TIM_Cmd(STRING_TIM[i], DISABLE); 
+					DMA_Cmd(STRING_DMA_CHANNEL[i],DISABLE);
+				}
+				state = 0;
+				timeout_flag = 0;
 		}
 		while(sending != 0) ;
 		for(i = 0;i < 6; i ++)
 		{
-			if(online_count[i] >= limit_count)
-			{
-				write_to_data_buf(i,0,0);	
-				continue;
-			}
-			
-			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10±¶ÕæÕýÆµÂÊ
-			Temperature = get_temperature(i);
-			
-			if(((Frequency_last[i] - Frequency) >= 1000) || ((Frequency - Frequency_last[i]) >= 1000))
-			{
-				online_count[i] ++;
-				STIMULATE_HIGH[i] = 2200;
-				STIMULATE_LOW[i] = 200;
-			}
-			else
-			{
-				online_count[i] = 0;
-				STIMULATE_HIGH[i] = 240000000.0f / (Frequency - 0.5f - 1000.0f) / 26.0f;
-				STIMULATE_LOW[i] = 240000000.0f / (Frequency - 0.5f + 1000.0f) / 26.0f;
-				if(STIMULATE_LOW[i] < 0 || STIMULATE_HIGH[i] < 0)
-				{
-					STIMULATE_LOW[i] = 200;
-					STIMULATE_HIGH[i] = 400;
-				}
-				else if(STIMULATE_HIGH[i] > 3000 || STIMULATE_LOW[i] > 3000)
-				{
-				  STIMULATE_LOW[i] = 2000;
-					STIMULATE_HIGH[i] = 2200;
-				}
-			}
-			Frequency_last[i] = Frequency;
-			
-			temp_log = log(Temperature * 4.5185f);
-			Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f; 
-			
-			write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
+			  Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10 times of real frequency
+			  Temperature = get_temperature(i);
+			  temp_log = log(Temperature * 4.5185f);
+			  Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f;  //100 times of real temperature
+			  write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
 		}
 	  GPIO_ResetBits(GPIOA, STRING_PIN_SWITCH);
 }
@@ -411,7 +365,7 @@ int main(void)
 
   while (1)
 	{
-		if(capture_flag == 1)
+		//if(capture_flag == 1)
 		{
 			capture();
 			capture_flag = 0;
@@ -910,15 +864,20 @@ void NVIC_Configuration(void)
   */
 
 
-void MEASUREMENT(int group)
+void MEASUREMENT(void)
 {
 	unsigned int i,j;
 	
-	i = STIMULATE_HIGH[group];	
-  while(i>=STIMULATE_LOW[group])
+	i = 1800;	
+  while(i>=800)
 	{
 		j = i;
-		GPIO_SetBits(STRING_GPIO[group], STRING_PIN[group]); 		
+		GPIO_SetBits(STRING_GPIO[0], STRING_PIN[0]); 	
+		GPIO_ResetBits(STRING_GPIO[1], STRING_PIN[1]);
+		GPIO_SetBits(STRING_GPIO[2], STRING_PIN[2]);
+		GPIO_ResetBits(STRING_GPIO[3], STRING_PIN[3]);
+		GPIO_SetBits(STRING_GPIO[4], STRING_PIN[4]);
+		GPIO_ResetBits(STRING_GPIO[5], STRING_PIN[5]);		
 		while(j)
 		{    
 				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
@@ -926,7 +885,12 @@ void MEASUREMENT(int group)
 		}  
 		
 		j = i;
-		GPIO_ResetBits(STRING_GPIO[group], STRING_PIN[group]); 	
+		GPIO_ResetBits(STRING_GPIO[0], STRING_PIN[0]); 	
+		GPIO_SetBits(STRING_GPIO[1], STRING_PIN[1]); 	
+		GPIO_ResetBits(STRING_GPIO[2], STRING_PIN[2]); 	
+		GPIO_SetBits(STRING_GPIO[3], STRING_PIN[3]); 	
+		GPIO_ResetBits(STRING_GPIO[4], STRING_PIN[4]); 	
+		GPIO_SetBits(STRING_GPIO[5], STRING_PIN[5]); 	
 		while(j)
 		{  
 			 __nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
@@ -935,6 +899,10 @@ void MEASUREMENT(int group)
 		
 		i = i - 1; 
 	}
+	
+	GPIO_ResetBits(STRING_GPIO[1], STRING_PIN[1]);
+	GPIO_ResetBits(STRING_GPIO[3], STRING_PIN[3]);
+	GPIO_ResetBits(STRING_GPIO[5], STRING_PIN[5]);
 	
 	DELAY(4000);                                                                                                                                                                                                                       
 }

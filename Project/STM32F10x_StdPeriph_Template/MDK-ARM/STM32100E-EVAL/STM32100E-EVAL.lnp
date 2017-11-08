@@ -28,6 +28,6 @@
 ".\stm32100e-eval\system_stm32f10x.o"
 ".\stm32100e-eval\startup_stm32f10x_hd_vl.o"
 --library_type=microlib --strict --scatter ".\STM32100E-EVAL\STM32100E-EVAL.sct"
---summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--summary_stderr --info summarysizes --map --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
 --list ".\STM32100E-EVAL\STM32100E-EVAL.map" -o .\STM32100E-EVAL\STM32100E-EVAL.axf
