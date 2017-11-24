@@ -45,21 +45,28 @@ extern uint16_t Capture[6][30];
 extern uint32_t size;
 
 extern volatile uint8_t state;
+extern volatile uint8_t timeout_flag;
 extern volatile uint8_t sending;
 extern volatile uint8_t capture_flag;
 extern volatile uint8_t send_flag;
 
 extern uint8_t data_buf[36];
 extern uint8_t reply_buf[35];
+extern uint8_t start_buf[35];
 
 extern char mode;
 
 extern UART_SendTypeDef UART_SendEnum;
-extern unsigned int board_num;
+extern unsigned char board_num1;
+extern unsigned char board_num2;
+
 
 uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
-int interval = 8;
+int interval = 3;
+int count = 0;
+uint8_t reset_flag = 0;
+uint8_t reset_count = 0;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -172,12 +179,11 @@ void SysTick_Handler(void)
 /*  available peripheral interrupt handler's name please refer to the startup */
 /*  file (startup_stm32f10x_xx.s).                                            */
 /******************************************************************************/
-int count = 0;
 void TIM6_DAC_IRQHandler(void)
 {
 	if(TIM_GetITStatus(TIM6, TIM_IT_Update) != RESET) //?? TIM3 ????????  
 	{  
-		TIM_ClearITPendingBit(TIM6, TIM_IT_Update ); //?? TIM3 ??????  
+		TIM_ClearITPendingBit(TIM6, TIM_IT_Update); //?? TIM3 ??????  
 		count ++;
 		if(count >= interval)
 		{
@@ -185,6 +191,23 @@ void TIM6_DAC_IRQHandler(void)
 			capture_flag = 1;
 			send_flag = 1;
 		}
+		
+		if(reset_flag == 1)
+		{
+			reset_count ++;
+			if(reset_count >= 5)
+			{
+				reset_flag = 0;
+				reset_count = 0;
+				GPIO_SetBits(GPIOA, ZIGBEE_PIN_RESET);
+			}
+		}
+		
+		if(timeout_flag != 0)
+		{
+			timeout_flag ++;
+		}
+			
 	}
 }	
 	
@@ -368,9 +391,57 @@ void DMA1_Channel6_IRQHandler(void)
   }
 }
 
+uint8_t recv;
+uint8_t rx_buf[10] = {0};
+uint8_t rx_count = 0;
+void USART1_IRQHandler(void)
+{
+	if(USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)
+  {
+		  USART_ClearITPendingBit(USART1,USART_IT_RXNE); 
+		  recv = USART_ReceiveData(USART1);
+		
+		  if(rx_count == 0)
+	    {
+				if(recv == 'S')
+				{
+					rx_buf[0] = recv;
+					rx_count ++;
+				}
+				return ;
+	    }
+	    else if(rx_count == 1)
+			{
+				rx_buf[rx_count] = recv;
+	      rx_count ++;
+				return ;
+			}
+			else if(rx_count == 2)
+			{
+				rx_buf[rx_count] = recv;
+	      rx_count ++;
+				return ;
+			}
+			else if(rx_count > 2)
+			{
+				rx_buf[rx_count] = recv;
+				rx_count ++;
+				if(recv == 'E')
+				{
+					if(rx_count == 4)
+					{
+						data_buf[33] = rx_buf[1];
+						data_buf[34] = rx_buf[2];
+					}
+					rx_count = 0;
+				}
+			}
+	}
+}
+
 uint8_t data;
 uint8_t rxbuf[40] = {0};
-uint8_t rxcount = 0;
+volatile uint8_t rxcount = 0;
 void UART4_IRQHandler(void)
 {
 	if(USART_GetITStatus(UART4, USART_IT_RXNE) != RESET)
@@ -378,40 +449,61 @@ void UART4_IRQHandler(void)
 		  USART_ClearITPendingBit(UART4,USART_IT_RXNE); 
 		  data = USART_ReceiveData(UART4);
 		
-		  if((rxcount == 0) && (data == 'S'))
+		  if(rxcount == 0)
 	    {
-				rxbuf[0] = data;
-				rxcount = 1;
+				if(data == 'H')
+				{
+					rxbuf[rxcount] = data;
+					rxcount ++;
+				}
+				return ;
 	    }
-	    else if(data == 'E')
+			else if(rxcount == 1)
 			{
-				rxbuf[rxcount] = data;
-	      rxcount ++;
-				if((rxcount == 6) && (rxbuf[1] == (board_num >> 8)) && (rxbuf[2] == (board_num & 0x00ff)))
+				if(data == board_num1)
 				{
-					data_buf[33] = rxbuf[3];
-					data_buf[34] = rxbuf[4];
+					rxbuf[rxcount] = data;
+					rxcount ++;
 				}
-				else if(rxcount == 3)
+				else 
 				{
-					 GPIO_SetBits(GPIOD, RS485_DE); 
-					 sending = 1;
-					 uart_485_senddata(data_buf, 36);
-					 sending = 0;
-					 GPIO_ResetBits(GPIOD, RS485_DE);
+					rxcount = 0;
 				}
-				rxcount = 0;
+				return ;
 			}
-			else if(data == 'E')
+			else if(rxcount == 2)
 			{
+				if(data == board_num2)
+				{
+					rxbuf[rxcount] = data;
+					rxcount ++;
+				}
+				else 
+				{
+					rxcount = 0;
+				}
+				return ;
 			}
-			else if(rxcount > 0)
+			else if(rxcount > 2)
 			{
 				rxbuf[rxcount] = data;
 				rxcount ++;
-				if(rxcount > 14) rxcount = 14;
+				if(data == 'E')
+				{
+					if(rxcount == 15)
+					{
+						if(rxbuf[3] == 0xff)
+						{
+							GPIO_SetBits(GPIOD, RS485_DE); 
+							sending = 1;
+							uart_485_senddata(data_buf, 36);
+							sending = 0;
+							GPIO_ResetBits(GPIOD, RS485_DE);
+						}
+					}
+					rxcount = 0;
+				}
 			}
-			else ;
 	}
 }
 
@@ -429,7 +521,8 @@ void USART3_IRQHandler(void)
 
 			if((UART_SendEnum == SEND_NONE) && (dat == 'K'))
 	    {
-				UART_SendEnum = SEND_START;
+				uart_zigbee_senddata(start_buf);
+				UART_SendEnum = SEND_DATA;
 				return;
 	    }
 		
@@ -524,8 +617,8 @@ void USART3_IRQHandler(void)
 							//TODO:在此添加重启代码
 							UART_SendEnum = SEND_NONE;
 							GPIO_ResetBits(GPIOA, ZIGBEE_PIN_RESET); 
-							DELAY(50000);
-							GPIO_SetBits(GPIOA, ZIGBEE_PIN_RESET);
+							reset_flag = 1;
+							reset_count = 0;
 						}
 						start_judge = 0;
 						break;

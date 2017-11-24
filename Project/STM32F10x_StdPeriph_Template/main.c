@@ -54,7 +54,7 @@ void NVIC_Configuration(void);
 void USART_Configuration(void);
 void SPI_Configuration(void);
 void ADC_Configuration(void);
-void MEASUREMENT(int group);
+void MEASUREMENT(void);
 void DELAY(__IO uint32_t nCount);
 void init_timer(void);
 void init_dma(void);
@@ -63,6 +63,7 @@ void dma_NVIC(void);
 uint16_t Capture[6][30]={0};
 
 volatile uint8_t state = 0;
+volatile uint8_t timeout_flag = 0;
 volatile uint8_t sending = 0;
 volatile uint8_t send_flag = 0;
 volatile uint8_t capture_flag = 0;
@@ -70,11 +71,33 @@ volatile uint8_t capture_flag = 0;
 char mode='R';
 uint32_t size=25;
 float Frequency = 0;
+float Frequency_last[6];
+uint8_t online_count[6] = {0,0,0,0,0,0};
+uint8_t limit_count = 5;
+
 float Temperature = 0;
 float cycleaverage[6] = {0};
-uint16_t bat_volt = 0;
-unsigned int board_num =0xAAAA;
-uint8_t module_per_group = 2;
+
+unsigned char board_num1 = 0xAA;
+unsigned char board_num2 = 0xAB;
+uint8_t module_per_group = 1;
+
+int STIMULATE_LOW[6] = {
+	200,
+	200,
+	200,
+	200,
+	200,
+	200};
+
+int STIMULATE_HIGH[6] = {
+	2200,
+	2200,
+	2200,
+	2200,
+	2200,
+	2200};
+
 	
 float	A = 0.0014051f;
 float B = 0.0002369f;
@@ -137,12 +160,32 @@ uint8_t adc_channel_map[6] = {
 	ADC_Channel_13,
 	ADC_Channel_0,
 	ADC_Channel_1};
+
+GPIO_TypeDef* ADR_GPIO[8] = {
+	GPIOB, 
+	GPIOB, 
+  GPIOB, 
+  GPIOB, 
+  GPIOB, 
+  GPIOC,
+	GPIOC,
+	GPIOC};
+
+uint16_t ADR_PIN[8] = {
+	ID_PIN_ADR1, 
+  ID_PIN_ADR2, 
+  ID_PIN_ADR3, 
+  ID_PIN_ADR4, 
+  ID_PIN_ADR5, 
+  ID_PIN_ADR6,
+	ID_PIN_ADR7,
+	ID_PIN_ADR8};
 	
 GPIO_TypeDef* STRING_GPIO[6] = {
 	GPIOC, 
 	GPIOC, 
-  GPIOA, 
-  GPIOA, 
+  GPIOC, 
+  GPIOC, 
   GPIOA, 
   GPIOA};
 
@@ -171,6 +214,62 @@ TIM_TypeDef* STRING_TIM[6] = {
   TIM3};
 	
 /* Private functions ---------------------------------------------------------*/
+/*void TEST()
+{
+	unsigned int i,j,k;
+	
+	i = 2100;	
+  while(i>=1000)
+	{
+		j = 200;
+
+		GPIO_SetBits(STRING_GPIO[0], STRING_PIN[0]);  
+			
+		while(j)
+		{    
+				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
+				j = j - 1;
+		}  
+		
+		j = 200;
+		GPIO_ResetBits(STRING_GPIO[0], STRING_PIN[0]); 			
+		while(j)
+		{  
+			 __nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
+			 j = j - 1;
+		}    
+		
+		i = i - 1; 
+	}
+	
+	DELAY(1500);                                                                                                                                                                                                                       
+}	
+*/	
+void read_ID()
+{
+	int i;
+	
+	board_num1 = 0;
+	board_num2 = 0;
+	for(i = 0;i < 4;i ++)
+	{
+		if(GPIO_ReadInputDataBit(ADR_GPIO[i], ADR_PIN[i]) == Bit_SET)
+		{
+			board_num1 |= (1 << i);
+		}
+	}
+	for(i = 0;i < 4;i ++)
+	{
+		if(GPIO_ReadInputDataBit(ADR_GPIO[i + 4], ADR_PIN[i + 4]) == Bit_SET)
+		{
+			board_num2 |= (1 << i);
+		}
+	}
+	
+	data_buf[1] = board_num1;
+	data_buf[2] = board_num2;
+}
+	
 void write_to_data_buf(int num,uint16_t Freq, uint16_t Temp)
 {
 	data_buf[3 + num * 5 + 1] = (uint8_t)((Freq&0xff00)>>8);
@@ -196,34 +295,35 @@ float get_temperature(int ch)
 
 void capture()
 {
-		int i,j;
+		int i;
 		float temp_log;
-		
-	  GPIO_SetBits(GPIOD, RS485_DE); 
-		uart_485_senddata(volt_buf, 4);
-		GPIO_ResetBits(GPIOD, RS485_DE);
 	  
 	  GPIO_SetBits(GPIOA, STRING_PIN_SWITCH); 
 		DELAY(1000);
-		for(i = 0;i < 6 / module_per_group;i ++)
+		MEASUREMENT();
+		for(i = 0;i < 6;i ++)
 		{
-			MEASUREMENT(i);
-			for(j = 0;j < module_per_group;j ++)
-			{
 				state = 1;
-				TIM_Cmd(STRING_TIM[i * module_per_group + j], ENABLE); 
-				DMA_Cmd(STRING_DMA_CHANNEL[i * module_per_group + j],ENABLE);			
-				while(state == 1) ; 
-			}
+			  timeout_flag = 1;
+				TIM_Cmd(STRING_TIM[i], ENABLE); 
+				DMA_Cmd(STRING_DMA_CHANNEL[i],ENABLE);			
+				while((state != 0) && (timeout_flag < 3)) ;
+				if(state == 1)
+				{
+					TIM_Cmd(STRING_TIM[i], DISABLE); 
+					DMA_Cmd(STRING_DMA_CHANNEL[i],DISABLE);
+				}
+				state = 0;
+				timeout_flag = 0;
 		}
 		while(sending != 0) ;
 		for(i = 0;i < 6; i ++)
 		{
-			Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10倍真正频率
-			Temperature = get_temperature(i);
-			//temp_log = log(Temperature);
-			//Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f; 
-			write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
+			  Frequency=240000000.0f/cycleaverage[i] + 0.5f;	//10 times of real frequency
+			  Temperature = get_temperature(i);
+			  temp_log = log(Temperature * 4.5185f);
+			  Temperature = (1.0f / (A + B * temp_log + C * temp_log * temp_log * temp_log) - 273.2f) * 100.0f;  //100 times of real temperature
+			  write_to_data_buf(i,(uint16_t)(Frequency),(uint16_t)(Temperature));	
 		}
 	  GPIO_ResetBits(GPIOA, STRING_PIN_SWITCH);
 }
@@ -240,6 +340,7 @@ int main(void)
        To reconfigure the default setting of SystemInit() function, refer to
        system_stm32f10x.c file
      */     
+	
   RCC_Configuration();
   NVIC_Configuration();
   GPIO_Configuration();
@@ -251,52 +352,41 @@ int main(void)
 	USART_Configuration();
 
   GPIO_SetBits(GPIOA, ZIGBEE_PIN_RESET); //开zigbee
+	GPIO_ResetBits(GPIOD, RS485_DE); 
 	
-	GPIO_ResetBits(GPIOB, BAT_PIN_1);
-	GPIO_ResetBits(GPIOC, BAT_PIN_2);
-	GPIO_ResetBits(GPIOA, BAT_PIN_3);
-	
-	data_buf[1] = (board_num >>8)& 0x00FF;
-	data_buf[2] = board_num & 0x00ff;
-	volt_buf[1] = (board_num >>8)& 0x00FF;
-	volt_buf[2] = board_num & 0x00ff;
+	read_ID();
 	
 	start_buf[1] = data_buf[1];
 	start_buf[2] = data_buf[2];
 	reply_buf[1] = data_buf[1];
 	reply_buf[2] = data_buf[2];
+	
+	capture_flag = 1;
 
   while (1)
 	{
-		if(capture_flag == 1)
+		//if(capture_flag == 1)
 		{
-			 capture();
-			 capture_flag = 0;
-		}
-		switch(UART_SendEnum)
-		{
-			case SEND_DATA:
+			capture();
+			capture_flag = 0;
+			if(UART_SendEnum == SEND_DATA)
 			{
 				if(send_flag == 1)
 				{
 					uart_zigbee_senddata(data_buf);
 					send_flag = 0;
 				}					
-				break;
 			}
-			case SEND_NONE:
-			{
-				break;
-			}
-			case SEND_START:
-			{
-				uart_zigbee_senddata(start_buf);
-				UART_SendEnum = SEND_DATA;
-				break;
-			}
-			default:break;
 		}
-	//printf("S1234567890123456789012345678901234");
+	  
+		
+		//TEST();
+		
+		//capture();
+		
+		/*GPIO_SetBits(GPIOD, RS485_DE); 
+	  uart_485_senddata(data_buf, 36);
+		GPIO_ResetBits(GPIOD, RS485_DE);*/
 	}
 	
 }
@@ -380,8 +470,8 @@ void RCC_Configuration(void)
 void dma_NVIC(void)
 {
   NVIC_InitTypeDef NVIC_InitStructure;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+  //NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 
 	NVIC_InitStructure.NVIC_IRQChannel = DMA1_Channel1_IRQn;
@@ -594,18 +684,12 @@ void GPIO_Configuration(void)
   GPIO_Init(GPIOB, &GPIO_InitStructure);
 
   /* output */
-  GPIO_InitStructure.GPIO_Pin = \
-				ZIGBEE_PIN_RESET|STRING_PIN_CEC|STRING_PIN_CED|STRING_PIN_CEE|STRING_PIN_CEF|STRING_PIN_SWITCH|BAT_PIN_3;
+  GPIO_InitStructure.GPIO_Pin = ZIGBEE_PIN_RESET|STRING_PIN_CEE|STRING_PIN_CEF|STRING_PIN_SWITCH;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOA, &GPIO_InitStructure);
 	
-	GPIO_InitStructure.GPIO_Pin = BAT_PIN_1;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-  GPIO_Init(GPIOB, &GPIO_InitStructure);
-	
-	GPIO_InitStructure.GPIO_Pin = STRING_PIN_CEA|STRING_PIN_CEB|BAT_PIN_2;
+	GPIO_InitStructure.GPIO_Pin = STRING_PIN_CEA|STRING_PIN_CEB|STRING_PIN_CEC|STRING_PIN_CED;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
   GPIO_Init(GPIOC, &GPIO_InitStructure);
@@ -629,6 +713,18 @@ void GPIO_Configuration(void)
 	GPIO_InitStructure.GPIO_Pin = SPIx_PIN_MISO;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
   GPIO_Init(SPIx_GPIO, &GPIO_InitStructure);
+	
+	
+	/* Configure ADR SMR7010 -----------------------------------*/
+	GPIO_InitStructure.GPIO_Pin =  ID_PIN_ADR1|ID_PIN_ADR2|ID_PIN_ADR3|ID_PIN_ADR4|ID_PIN_ADR5;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_Init(GPIOB, &GPIO_InitStructure);
+	
+	GPIO_InitStructure.GPIO_Pin =  ID_PIN_ADR6|ID_PIN_ADR7|ID_PIN_ADR8;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_Init(GPIOC, &GPIO_InitStructure);
 	
 	/* Configure PC0-3 as analog input -------------------------*/
   GPIO_InitStructure.GPIO_Pin = STRING_PIN_TEMPOP1 | STRING_PIN_TEMPOP2 | STRING_PIN_TEMPOP3 | STRING_PIN_TEMPOP4;
@@ -693,7 +789,9 @@ void USART_Configuration(void)
   /* Enable GPIO clock */
   //RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE); //前面已经开过了
 
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
+	
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
 	
 
@@ -703,6 +801,11 @@ void USART_Configuration(void)
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_Init(GPIOB, &GPIO_InitStructure);
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
 
 
   /* Configure USART Rx as input floating */
@@ -710,17 +813,24 @@ void USART_Configuration(void)
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
   GPIO_Init(GPIOB, &GPIO_InitStructure);
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
 
   /* USART configuration */
   USART_Init(USART3, &USART_InitStructure);
 	USART_Init(UART4, &USART_InitStructure);
+	USART_Init(USART1, &USART_InitStructure);
     
   /* Enable USART */
   USART_Cmd(USART3, ENABLE);
 	USART_Cmd(UART4, ENABLE);
+	USART_Cmd(USART1, ENABLE);
 	
 	USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
 	USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
+	USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
 }
 
 void NVIC_Configuration(void)
@@ -732,12 +842,17 @@ void NVIC_Configuration(void)
   
   /* Enable the USART3 Interrupt */
   NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&NVIC_InitStructure);
 	
 	NVIC_InitStructure.NVIC_IRQChannel = UART4_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+	
+	NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&NVIC_InitStructure);
 }
@@ -749,18 +864,20 @@ void NVIC_Configuration(void)
   */
 
 
-void MEASUREMENT(int group)
+void MEASUREMENT(void)
 {
-	unsigned int i,j,k;
+	unsigned int i,j;
 	
-	i = 2100;	
-  while(i>=1000)
+	i = 1800;	
+  while(i>=800)
 	{
 		j = i;
-		for(k = 0;k < module_per_group;k ++)
-		{
-			GPIO_SetBits(STRING_GPIO[group * module_per_group + k], STRING_PIN[group * module_per_group + k]);  
-		} 			
+		GPIO_SetBits(STRING_GPIO[0], STRING_PIN[0]); 	
+		GPIO_ResetBits(STRING_GPIO[1], STRING_PIN[1]);
+		GPIO_SetBits(STRING_GPIO[2], STRING_PIN[2]);
+		GPIO_ResetBits(STRING_GPIO[3], STRING_PIN[3]);
+		GPIO_SetBits(STRING_GPIO[4], STRING_PIN[4]);
+		GPIO_ResetBits(STRING_GPIO[5], STRING_PIN[5]);		
 		while(j)
 		{    
 				__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
@@ -768,10 +885,12 @@ void MEASUREMENT(int group)
 		}  
 		
 		j = i;
-		for(k = 0;k < module_per_group;k ++)
-		{
-			GPIO_ResetBits(STRING_GPIO[group * module_per_group + k], STRING_PIN[group * module_per_group + k]); 
-		}			
+		GPIO_ResetBits(STRING_GPIO[0], STRING_PIN[0]); 	
+		GPIO_SetBits(STRING_GPIO[1], STRING_PIN[1]); 	
+		GPIO_ResetBits(STRING_GPIO[2], STRING_PIN[2]); 	
+		GPIO_SetBits(STRING_GPIO[3], STRING_PIN[3]); 	
+		GPIO_ResetBits(STRING_GPIO[4], STRING_PIN[4]); 	
+		GPIO_SetBits(STRING_GPIO[5], STRING_PIN[5]); 	
 		while(j)
 		{  
 			 __nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();__nop();
@@ -781,7 +900,11 @@ void MEASUREMENT(int group)
 		i = i - 1; 
 	}
 	
-	DELAY(1500);                                                                                                                                                                                                                       
+	GPIO_ResetBits(STRING_GPIO[1], STRING_PIN[1]);
+	GPIO_ResetBits(STRING_GPIO[3], STRING_PIN[3]);
+	GPIO_ResetBits(STRING_GPIO[5], STRING_PIN[5]);
+	
+	DELAY(4000);                                                                                                                                                                                                                       
 }
 
 void DELAY(__IO uint32_t nCount)

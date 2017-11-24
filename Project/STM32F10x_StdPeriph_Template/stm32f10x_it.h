@@ -30,8 +30,6 @@
 typedef enum
 {
 	SEND_DATA,
-	SEND_REPLY,
-	SEND_START,
 	SEND_NONE
 }UART_SendTypeDef;
 /* Exported constants --------------------------------------------------------*/
