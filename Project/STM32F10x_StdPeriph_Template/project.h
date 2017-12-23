@@ -56,4 +56,6 @@
 #define SPIx_PIN_MISO          GPIO_Pin_14
 #define SPIx_PIN_MOSI          GPIO_Pin_15
 	
+#define FLASH_START_ADDR  0X08020000	
+	
 #endif

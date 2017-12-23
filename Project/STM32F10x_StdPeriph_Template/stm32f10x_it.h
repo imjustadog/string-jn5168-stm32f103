@@ -30,7 +30,8 @@
 typedef enum
 {
 	SEND_DATA,
-	SEND_NONE
+	SEND_NONE,
+	SEND_SLEEP
 }UART_SendTypeDef;
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/

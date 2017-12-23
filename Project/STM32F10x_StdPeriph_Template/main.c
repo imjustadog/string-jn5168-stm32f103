@@ -66,7 +66,8 @@ volatile uint8_t state = 0;
 volatile uint8_t timeout_flag = 0;
 volatile uint8_t sending = 0;
 volatile uint8_t send_flag = 0;
-volatile uint8_t capture_flag = 0;
+volatile uint8_t address_flag = 0;
+UART_SendTypeDef last_read  = SEND_DATA;
 
 char mode='R';
 uint32_t size=25;
@@ -253,14 +254,14 @@ void read_ID()
 	board_num2 = 0;
 	for(i = 0;i < 4;i ++)
 	{
-		if(GPIO_ReadInputDataBit(ADR_GPIO[i], ADR_PIN[i]) == Bit_SET)
+		if(GPIO_ReadInputDataBit(ADR_GPIO[i], ADR_PIN[i]) == Bit_RESET)
 		{
 			board_num1 |= (1 << i);
 		}
 	}
 	for(i = 0;i < 4;i ++)
 	{
-		if(GPIO_ReadInputDataBit(ADR_GPIO[i + 4], ADR_PIN[i + 4]) == Bit_SET)
+		if(GPIO_ReadInputDataBit(ADR_GPIO[i + 4], ADR_PIN[i + 4]) == Bit_RESET)
 		{
 			board_num2 |= (1 << i);
 		}
@@ -268,6 +269,13 @@ void read_ID()
 	
 	data_buf[1] = board_num1;
 	data_buf[2] = board_num2;
+}
+
+uint16_t read_flash()
+{
+	uint16_t value;
+	value = *(uint16_t*)(FLASH_START_ADDR);
+	return value;
 }
 	
 void write_to_data_buf(int num,uint16_t Freq, uint16_t Temp)
@@ -355,33 +363,35 @@ int main(void)
 	GPIO_ResetBits(GPIOD, RS485_DE); 
 	
 	read_ID();
-	
+	if(read_flash() != 45)
+		last_read = SEND_DATA;
+	else last_read = SEND_SLEEP;
+		
+
 	start_buf[1] = data_buf[1];
 	start_buf[2] = data_buf[2];
 	reply_buf[1] = data_buf[1];
 	reply_buf[2] = data_buf[2];
-	
-	capture_flag = 1;
 
   while (1)
 	{
-		//if(capture_flag == 1)
-		{
-			capture();
-			capture_flag = 0;
+
 			if(UART_SendEnum == SEND_DATA)
 			{
 				if(send_flag == 1)
 				{
+					capture();
 					uart_zigbee_senddata(data_buf);
 					send_flag = 0;
-				}					
-			}
-		}
+				}	
+		  }
 	  
-		
+			if(address_flag == 1 && UART_SendEnum != SEND_NONE)
+			{
+				uart_zigbee_senddata(start_buf);
+				address_flag = 0;
+			}
 		//TEST();
-		
 		//capture();
 		
 		/*GPIO_SetBits(GPIOD, RS485_DE); 

@@ -47,8 +47,9 @@ extern uint32_t size;
 extern volatile uint8_t state;
 extern volatile uint8_t timeout_flag;
 extern volatile uint8_t sending;
-extern volatile uint8_t capture_flag;
 extern volatile uint8_t send_flag;
+extern volatile uint8_t address_flag;
+extern UART_SendTypeDef last_read;
 
 extern uint8_t data_buf[36];
 extern uint8_t reply_buf[35];
@@ -65,10 +66,19 @@ uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
 int interval = 3;
 int count = 0;
+uint8_t address_interval = 30;
+uint8_t address_count = 2;
 uint8_t reset_flag = 0;
 uint8_t reset_count = 0;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
+void write_flash(uint16_t dat)
+{
+	FLASH_Unlock();
+	FLASH_ClearFlag(FLASH_FLAG_BSY|FLASH_FLAG_EOP|FLASH_FLAG_PGERR|FLASH_FLAG_WRPRTERR);
+	FLASH_ErasePage(FLASH_START_ADDR);
+	FLASH_ProgramHalfWord(FLASH_START_ADDR,dat);
+}
 
 /******************************************************************************/
 /*            Cortex-M3 Processor Exceptions Handlers                         */
@@ -184,12 +194,19 @@ void TIM6_DAC_IRQHandler(void)
 	if(TIM_GetITStatus(TIM6, TIM_IT_Update) != RESET) //?? TIM3 ????????  
 	{  
 		TIM_ClearITPendingBit(TIM6, TIM_IT_Update); //?? TIM3 ??????  
+		
 		count ++;
 		if(count >= interval)
 		{
 			count = 0;
-			capture_flag = 1;
 			send_flag = 1;
+		}
+		
+		address_count ++;
+		if(address_count > address_interval)
+		{
+			address_count = 0;
+			address_flag = 1;
 		}
 		
 		if(reset_flag == 1)
@@ -522,7 +539,7 @@ void USART3_IRQHandler(void)
 			if((UART_SendEnum == SEND_NONE) && (dat == 'K'))
 	    {
 				uart_zigbee_senddata(start_buf);
-				UART_SendEnum = SEND_DATA;
+				UART_SendEnum = last_read;
 				return;
 	    }
 		
@@ -568,9 +585,15 @@ void USART3_IRQHandler(void)
 							 }
 							 uart_zigbee_senddata(reply_buf);
 				       if(mode == 'R')
+							 {
 								 UART_SendEnum = SEND_DATA;
+								 write_flash(53);
+							 }
 							 else if(mode == 'Z')
-					       UART_SendEnum = SEND_NONE;
+							 {
+					       UART_SendEnum = SEND_SLEEP;
+								 write_flash(45);
+							 }
 						}
 				}
 			}
