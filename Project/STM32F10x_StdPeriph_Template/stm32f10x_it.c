@@ -57,14 +57,15 @@ extern uint8_t start_buf[35];
 
 extern char mode;
 
-extern UART_SendTypeDef UART_SendEnum;
+volatile extern UART_SendTypeDef UART_SendEnum;
+volatile extern uint8_t zigbee_connect_flag;
 extern unsigned char board_num1;
 extern unsigned char board_num2;
 
 
 uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
-int interval = 3;
+int interval = 1;
 int count = 0;
 uint8_t address_interval = 30;
 uint8_t address_count = 2;
@@ -475,48 +476,54 @@ void UART4_IRQHandler(void)
 				}
 				return ;
 	    }
-			else if(rxcount == 1)
-			{
-				if(data == board_num1)
-				{
-					rxbuf[rxcount] = data;
-					rxcount ++;
-				}
-				else 
-				{
-					rxcount = 0;
-				}
-				return ;
-			}
-			else if(rxcount == 2)
-			{
-				if(data == board_num2)
-				{
-					rxbuf[rxcount] = data;
-					rxcount ++;
-				}
-				else 
-				{
-					rxcount = 0;
-				}
-				return ;
-			}
-			else if(rxcount > 2)
+			else if(rxcount > 0)
 			{
 				rxbuf[rxcount] = data;
 				rxcount ++;
 				if(data == 'E')
 				{
-					if(rxcount == 15)
+					if(rxcount == 35)
 					{
-						if(rxbuf[3] == 0xff)
+						if(rxbuf[11] == board_num1 && rxbuf[12] == board_num2)
 						{
-							GPIO_SetBits(GPIOD, RS485_DE); 
-							sending = 1;
-							uart_485_senddata(data_buf, 36);
-							sending = 0;
-							GPIO_ResetBits(GPIOD, RS485_DE);
-						}
+							//TODO:在此添加命令解析代码
+							 if(rxbuf[18] != 0xff)
+							 {
+								 //TODO:设置采样间隔 
+								 interval = rxbuf[18] * 0.5;
+								 reply_buf[32] = 0;
+								 reply_buf[33] = 0;
+								 reply_buf[34] = 0x55;
+							 }
+							 else if(rxbuf[16] == 0xff)
+							 {
+								 mode = 'R';
+								 reply_buf[32] = 0xff;
+								 reply_buf[33] = 0;
+								 reply_buf[34] = 0xff;
+								 
+							 }
+							 else if(rxbuf[26] == 0)
+							 {
+							   mode = 'Z';
+								 reply_buf[32] = 0x55;
+								 reply_buf[33] = 0;
+								 reply_buf[34] = 0;
+							 }						
+							 GPIO_SetBits(GPIOD, RS485_DE); 
+							 uart_485_senddata(reply_buf, 36);
+							 GPIO_ResetBits(GPIOD, RS485_DE);
+				       if(mode == 'R')
+							 {
+								 UART_SendEnum = SEND_DATA;
+								 write_flash(53);
+							 }
+							 else if(mode == 'Z')
+							 {
+					       UART_SendEnum = SEND_SLEEP;
+								 write_flash(45);
+							 }
+						 }
 					}
 					rxcount = 0;
 				}
@@ -536,10 +543,10 @@ void USART3_IRQHandler(void)
     /* Read one byte from the receive data register */
 		  dat = USART_ReceiveData(USART3);
 
-			if((UART_SendEnum == SEND_NONE) && (dat == 'K'))
+			if((zigbee_connect_flag == 0) && (dat == 'K'))
 	    {
+				zigbee_connect_flag = 1;
 				uart_zigbee_senddata(start_buf);
-				UART_SendEnum = last_read;
 				return;
 	    }
 		
@@ -638,7 +645,7 @@ void USART3_IRQHandler(void)
 						if(dat == 'D')
 						{
 							//TODO:在此添加重启代码
-							UART_SendEnum = SEND_NONE;
+							zigbee_connect_flag = 0;
 							GPIO_ResetBits(GPIOA, ZIGBEE_PIN_RESET); 
 							reset_flag = 1;
 							reset_count = 0;

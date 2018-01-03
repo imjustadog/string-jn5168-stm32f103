@@ -106,7 +106,8 @@ float C = 0.0000001019f;
 
 void uart_zigbee_senddata(uint8_t *str);
 void uart_485_senddata(uint8_t *str, uint8_t num);
-UART_SendTypeDef UART_SendEnum  = SEND_NONE;
+volatile UART_SendTypeDef UART_SendEnum  = SEND_DATA;
+volatile uint8_t zigbee_connect_flag = 0;
 
 uint8_t volt_buf[4] = {'S', 0, 0, 'E'};
 
@@ -266,6 +267,8 @@ void read_ID()
 			board_num2 |= (1 << i);
 		}
 	}
+	//board_num1=9;
+	//board_num2=6;
 	
 	data_buf[1] = board_num1;
 	data_buf[2] = board_num2;
@@ -366,8 +369,8 @@ int main(void)
 	if(read_flash() != 45)
 		last_read = SEND_DATA;
 	else last_read = SEND_SLEEP;
+  UART_SendEnum = last_read;
 		
-
 	start_buf[1] = data_buf[1];
 	start_buf[2] = data_buf[2];
 	reply_buf[1] = data_buf[1];
@@ -375,18 +378,21 @@ int main(void)
 
   while (1)
 	{
-
-			if(UART_SendEnum == SEND_DATA)
+			if(send_flag == 1)
 			{
-				if(send_flag == 1)
-				{
-					capture();
-					uart_zigbee_senddata(data_buf);
+					if(UART_SendEnum == SEND_DATA)
+					{
+						capture(); 
+						GPIO_SetBits(GPIOD, RS485_DE);
+						if(zigbee_connect_flag == 1)
+							uart_zigbee_senddata(data_buf);
+						uart_485_senddata(data_buf, 36);
+						GPIO_ResetBits(GPIOD, RS485_DE);
+					}	
 					send_flag = 0;
-				}	
 		  }
 	  
-			if(address_flag == 1 && UART_SendEnum != SEND_NONE)
+			if(address_flag == 1 && zigbee_connect_flag == 1)
 			{
 				uart_zigbee_senddata(start_buf);
 				address_flag = 0;
@@ -802,6 +808,7 @@ void USART_Configuration(void)
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
 	
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+	USART_InitStructure.USART_BaudRate = 230400; //然而实际波特率是9600，不知道发生了啥
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
 	
 
