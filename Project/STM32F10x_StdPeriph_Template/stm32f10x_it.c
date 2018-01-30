@@ -65,7 +65,7 @@ extern unsigned char board_num2;
 
 uint32_t cycle[30] = {0};
 __IO uint32_t allcycle = 0;
-int interval = 1;
+int interval = 2;
 int count = 0;
 uint8_t address_interval = 30;
 uint8_t address_count = 2;

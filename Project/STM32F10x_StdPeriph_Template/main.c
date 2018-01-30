@@ -806,9 +806,7 @@ void USART_Configuration(void)
   //RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE); //前面已经开过了
 
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
-	
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
-	USART_InitStructure.USART_BaudRate = 230400; //然而实际波特率是9600，不知道发生了啥
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
 	
 
@@ -836,9 +834,10 @@ void USART_Configuration(void)
   GPIO_Init(GPIOA, &GPIO_InitStructure);
 
   /* USART configuration */
-  USART_Init(USART3, &USART_InitStructure);
-	USART_Init(UART4, &USART_InitStructure);
 	USART_Init(USART1, &USART_InitStructure);
+	USART_Init(USART3, &USART_InitStructure);
+	USART_InitStructure.USART_BaudRate = 230400;
+	USART_Init(UART4, &USART_InitStructure);
     
   /* Enable USART */
   USART_Cmd(USART3, ENABLE);
